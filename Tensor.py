@@ -1,7 +1,8 @@
+import math
 import numpy as np
 
 class Tensor:
-  def __init__(self, data, _children=(), _op=''):
+  def __init__(self, data, _children=(), _op='', requires_grad=True):
     # Allow Parameter objects to pass through (since Parameter inherits from Tensor)
     if hasattr(data, 'data') and hasattr(data, 'grad'):  # It's a Tensor-like object
       self.data = data.data if hasattr(data, 'data') else data
@@ -17,6 +18,8 @@ class Tensor:
     self._op = _op
     self._prev = set(_children) # Set of input Tensors that created this Tensor
     self.is_parameter = False # Flag for identifying parameters
+    self.is_leaf = len(_children) == 0
+    self.requires_grad = requires_grad  # if true only then participate in backward pass
 
   def __add__(self, other):
         other = other if isinstance(other, Tensor) else Tensor(other)
@@ -52,6 +55,14 @@ class Tensor:
 
     def _backward():
       self.grad = self.grad + (out.data > 0) * out.grad
+    out._backward = _backward
+    return out
+  
+  def sigmoid(self):
+    out = Tensor(1/(1 + math.exp(-self.data)), (self,), 'sigmoid')
+
+    def _backward():
+      self.grad = self.grad + (out.data * (1 - out.data)) * out.grad
     out._backward = _backward
     return out
 

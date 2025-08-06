@@ -54,6 +54,20 @@ class ReLU(Module):
   def forward(self, x):
     return x.relu()
   
+class Sigmoid(Module):
+  def __init__(self):
+    super().__init__()
+
+  def forward(self, x):
+    return x.sigmoid()
+  
+class Identity(Module):
+  def __init__(self):
+    super().__init__()
+
+  def forward(self, x):
+    return x
+  
 class Sequential(Module):
   def __init__(self, *modules):
     super().__init__() # Initialize parent Module class
