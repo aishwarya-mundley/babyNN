@@ -1,16 +1,28 @@
 import math
 import numpy as np
 
+NO_GRAD = False
+class no_grad:
+  def __enter__(self):
+    global NO_GRAD
+    self.prev = NO_GRAD
+    NO_GRAD = True
+
+  def __exit__(self, exc_type, exc_value, traceback):
+    global NO_GRAD
+    NO_GRAD = self.prev
+
 class Tensor:
   def __init__(self, data, _children=(), _op='', requires_grad=True):
+    global NO_GRAD
     # Allow Parameter objects to pass through (since Parameter inherits from Tensor)
     if hasattr(data, 'data') and hasattr(data, 'grad'):  # It's a Tensor-like object
       self.data = data.data if hasattr(data, 'data') else data
-    elif isinstance(data, (int, float, np.ndarray)):
-      if isinstance(data, (int, float)):
-        self.data = np.array(data)
+    elif isinstance(data, (int, float, np.ndarray, np.generic)):
+      if isinstance(data, (int, float, np.generic)):
+        self.data = np.array(data, dtype=np.float32)  # Convert to float32 for consistency
       else:
-        self.data = data
+        self.data = data.astype(np.float32)  # Ensure numpy array is float32
     else:
       raise TypeError(f"Data must be a number or numpy array, got {type(data)}")
     self.grad = np.zeros_like(self.data, dtype=float)  #initialize gradiant
@@ -19,7 +31,7 @@ class Tensor:
     self._prev = set(_children) # Set of input Tensors that created this Tensor
     self.is_parameter = False # Flag for identifying parameters
     self.is_leaf = len(_children) == 0
-    self.requires_grad = requires_grad  # if true only then participate in backward pass
+    self.requires_grad = requires_grad and not NO_GRAD # if true only then participate in backward pass
 
   def __add__(self, other):
         other = other if isinstance(other, Tensor) else Tensor(other)
@@ -83,13 +95,51 @@ class Tensor:
     out = Tensor(np.sum(self.data, axis=axis, keepdims=keepdims), (self,), 'sum')
 
     def _backward():
-      if axis is not None and not keepdims:
-        # Need to expand grad if sum reduced dimensions
-        shape_tuple = tuple(1 if i == axis else self.data.shape[i] for i in range(self.data.ndim))
-        self.grad = self.grad + np.reshape(out.grad, shape_tuple)
+      grad_out = out.grad
+      if axis is None:
+        # Summed over all dims - just broadcast scalar to input shape
+        self.grad = self.grad + np.ones_like(self.data) * grad_out
       else:
-        self.grad = self.grad + out.grad
+        # Ensure axis is tuple for consistent processing
+        if isinstance(axis, int):
+          axes = (axis,)
+        else:
+          axes = tuple(axis)
+        
+        # If keepdims=False, expand dimensions back for broadcasting
+        if not keepdims:
+          for ax in sorted(axes):
+            grad_out = np.expand_dims(grad_out, ax)
+        
+        # Broadcasr to input shape
+        self.grad = self.grad + np.ones_like(self.data) * grad_out
     out._backward = _backward
+    return out
+  
+  def mean(self, axis=None, keepdims=False):
+    out_data = np.mean(self.data, axis=axis, keepdims=keepdims)
+    out = Tensor(out_data, requires_grad=self.requires_grad, _op="mean")
+
+    if self.requires_grad:
+      def _backward():
+        grad_shape = self.data.shape
+        # Number of elements the mean is taken over
+        if axis is None:
+          num_elements = self.data.size
+          grad = (out.grad / num_elements) * np.ones_like(self.data)
+        else:
+          # Normalize only along given axis
+          num_elements = self.data.shape[axis] if isinstance(axis, int) else np.prod([self.data.shape[i] for i in axis])
+          grad = (out.grad / num_elements)
+
+          if not keepdims:
+            # Expand back to original shape
+            grad = np.expand_dims(grad, axis=axis)
+
+          grad = np.broadcast_to(grad, grad_shape)
+        self.grad = self.grad + grad if self.grad is not None else grad
+      out._backward = _backward
+      out._prev = {self}
     return out
 
   def log(self):
@@ -141,6 +191,18 @@ class Tensor:
 
   def __rtruediv__(self, other): # other / self
     return other * (self**-1)
+  
+  def squeeze(self, axis=None):
+    return Tensor(np.squeeze(self.data, axis=axis))
+  
+  def numpy(self):
+    # Return the raw NumPy array without breaking references
+    return np.array(self.data, copy=False)
+  
+  def item(self):
+    if self.data.size != 1:
+      raise ValueError("Can only convert a tensor with one element to a Python scalar")
+    return self.data.item()
 
   def __repr__(self):
     return f"Tensor(data={self.data}, grad={self.grad})"

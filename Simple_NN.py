@@ -40,6 +40,8 @@ for epoch in range(epochs):
     print(f"Epoch {epoch+1}/{epochs}, Loss {loss.data.item():.4f}")
 
 print("\nTraining complete!")
+print("Final predictions:", predictions.data)
+print("Final loss:", loss.data.item())
 print("Learned parameters:")
 for name, param in model._parameters.items():
   print(f"  {name}: {param.data}")

@@ -68,6 +68,13 @@ class Identity(Module):
   def forward(self, x):
     return x
   
+class Tanh(Module):
+  def __init__(self):
+    super().__init__()
+
+  def forward(self, x):
+    return x.tanh()
+  
 class Sequential(Module):
   def __init__(self, *modules):
     super().__init__() # Initialize parent Module class
