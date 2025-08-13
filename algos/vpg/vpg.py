@@ -149,8 +149,6 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
     }
 )
 
-  # setup model saving (skipped)
-
   def update():
     data = buf.get()
     
@@ -166,7 +164,6 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
     # train policy with single step of gradient decent - this is 1 step
     pi_optimizer.zero_grad()
     loss_pi, pi_info = compute_loss_pi(data)
-
     loss_pi.backward()
     pi_optimizer.step()
 
@@ -222,7 +219,7 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
   # Main loop : collect experience in env and update/log each epoch
   for epoch in range(epochs):
     for t in range(steps_per_epoch):
-      a, v, logp = ac.step(Tensor(o_flat))
+      a, v, logp = ac.step(Tensor(o_flat))     # actor gives action and its log prob, critic gives value
       if isinstance(a, Tensor):
         a = a.data
       a = np.asarray(a).squeeze()
@@ -231,7 +228,7 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
       elif a.ndim > 1 and a.shape[0] == steps_per_epoch:
         a = a[t]  # get the action for current timestep
 
-      next_o, r, terminated, truncated, _ = env.step(a)
+      next_o, r, terminated, truncated, _ = env.step(a)    # take that action in env and get reward r and next_obs
       done = terminated or truncated
       if isinstance(next_o, tuple):
         next_o = next_o[0]
@@ -247,7 +244,7 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
       ep_len += 1
 
       # save and log
-      buf.store(o_flat, a, r, v, logp)
+      buf.store(o_flat, a, r, v, logp)  # store current obs, action, reward, value and log prob in buffer
 
       # update obs (critical!)
       o_flat = next_o_flat
@@ -278,8 +275,8 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--env', type=str, default='HalfCheetah-v5')
-parser.add_argument('--hid', type=int, default=64)
-parser.add_argument('--l', type=int, default=2)
+parser.add_argument('--hid', type=int, default=128)
+parser.add_argument('--l', type=int, default=3)
 parser.add_argument('--gamma', type=float, default=0.99)
 parser.add_argument('--seed', '-s', type=int, default=0)
 parser.add_argument('--steps', type=int, default=4000)
