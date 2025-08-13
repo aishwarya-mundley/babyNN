@@ -2,7 +2,7 @@ import time
 import numpy as np
 import gymnasium as gym
 from algos.vpg.core import combined_shape, manual_seed, count_vars, MLPActorCritic, discount_cumsum
-from Tensor import Tensor
+from Tensor import Tensor, no_grad
 from Optimizer import Adam
 import argparse
 import wandb
@@ -199,21 +199,12 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
     
     return loss_pi
 
-  def verify_parameter_connection():
-    print("\n=== PARAMETER CONNECTION VERIFICATION ===")
-    for i, param in enumerate(ac.pi.parameters()):
-        if param._op:
-            print(f"Param {i}: op='{param._op}', has _prev: {len(param._prev) > 0}")
-        else:
-            print(f"Param {i}: LEAF NODE (should be), requires_grad: {param.requires_grad}")
-          
-        # Check if this parameter appears in the computational graph of the loss
-        # This is a manual trace - in practice, this should happen automatically
-        print(f"Param {i} id: {id(param)}")
-
   def update():
     data = buf.get()
-    # print(data)
+    
+    # Get old policy distribution
+    with no_grad():
+      pi_old, _ = ac.pi(data['obs'], data['act'])
 
     # get loss and info values before update
     pi_l_old, pi_info_old = compute_loss_pi(data)
@@ -251,6 +242,14 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
       param_diff = np.linalg.norm(param.data - old_params[i])
       print(f"{name} parameter change magnitude: {param_diff}")
 
+    # Get new policy distribution after the update
+    with no_grad():
+      pi_new, _ = ac.pi(data['obs'], data['act'])
+    # Calculate the KL divergence between the old and new policies
+    # D_KL(pi_old || pi_new)
+    kl = (pi_old.log_prob(data['act']) - pi_new.log_prob(data['act'])).mean().item()
+    ent = pi_new.entropy().mean().item() # Use entropy from the new policy
+
     # value function learning - this is for {train_v_iter} no of step
     for i in range(train_v_iters):
       vf_optimizer.zero_grad()
@@ -259,18 +258,20 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
       # mpi_avg_grads(ac.v)  # average grads across MPI processes
       vf_optimizer.step()
 
-    verify_parameter_connection()
+    # Re-calculate losses with the updated parameters to get a meaningful delta
+    loss_pi_new, _ = compute_loss_pi(data)
+    loss_v_new = compute_loss_v(data)
+
     # Log changes from update
-    kl, ent =pi_info['kl'], pi_info_old['ent']
     print("\nLossPi: ",pi_l_old)
     print("LossV: ", v_l_old)
     print("KL: ", kl)
     print("Entropy: ", ent)
-    print("DeltaLossPi: ", loss_pi.item() - pi_l_old)
-    print("DeltaLossV: ", loss_v.item() - v_l_old)
+    print("DeltaLossPi: ", loss_pi_new.item() - pi_l_old)
+    print("DeltaLossV: ", loss_v_new.item() - v_l_old)
     wandb.log({
-        "loss_pi": loss_pi.item(),
-        "loss_v": loss_v.item(),
+        "loss_pi": loss_pi_new.item(),
+        "loss_v": loss_v_new.item(),
         "kl": kl,
         "entropy": ent,
         "mean_adv": data['adv'].data.mean().item(),
