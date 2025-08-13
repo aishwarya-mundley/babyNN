@@ -151,6 +151,16 @@ class Tensor:
     out._backward = _backward
     return out
 
+  def exp(self):
+    out = Tensor(np.exp(self.data), (self,), 'exp')
+    out.requires_grad = self.requires_grad
+    
+    def _backward():
+        if self.requires_grad:
+            self.grad = self.grad + out.grad * out.data  # d/dx(e^x) = e^x
+    out._backward = _backward
+    return out
+
   def tanh(self):
     out = Tensor(np.tanh(self.data), (self,), 'tanh')
 

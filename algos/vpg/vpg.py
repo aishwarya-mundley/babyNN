@@ -155,6 +155,62 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
 
   # setup model saving (skipped)
 
+  def debug_gradients_and_params(ac, loss_pi, data):
+    print("\n=== DEBUGGING GRADIENT FLOW ===")
+    
+    # 1. Check if loss has gradients
+    print(f"Loss value: {loss_pi.item()}")
+    print(f"Loss requires_grad: {loss_pi.requires_grad}")
+    print(f"Loss _prev (dependencies): {len(loss_pi._prev)}")
+    
+    # 2. Check parameter values before update
+    print(f"\n--- Parameters BEFORE backward ---")
+    param_count = 0
+    for name, param in [("pi_weight_0", list(ac.pi.parameters())[0]), 
+                       ("pi_bias_0", list(ac.pi.parameters())[1])]:
+        print(f"{name} first 3 values: {param.data.flat[:3]}")
+        print(f"{name} requires_grad: {param.requires_grad}")
+        print(f"{name} grad before: {param.grad.flat[:3] if param.grad is not None else 'None'}")
+        param_count += 1
+        if param_count >= 2:  # Just check first 2 parameters
+            break
+    
+    # 3. Check input data
+    print(f"\n--- Input Data Check ---")
+    obs, act, adv, logp_old = data['obs'], data['act'], data['adv'], data['logp']
+    print(f"obs shape: {obs.data.shape}, requires_grad: {obs.requires_grad}")
+    print(f"act shape: {act.data.shape}, requires_grad: {act.requires_grad}")
+    print(f"adv shape: {adv.data.shape}, mean: {adv.data.mean():.4f}, std: {adv.data.std():.4f}")
+    print(f"logp_old shape: {logp_old.data.shape}, requires_grad: {logp_old.requires_grad}")
+    
+    # 4. Check policy output
+    pi, logp = ac.pi(obs, act)
+    print(f"\n--- Policy Output Check ---")
+    print(f"logp shape: {logp.data.shape}, requires_grad: {logp.requires_grad}")
+    print(f"logp mean: {logp.data.mean():.4f}, std: {logp.data.std():.4f}")
+    print(f"logp _prev (dependencies): {len(logp._prev)}")
+    
+    # 5. Check loss computation components
+    loss_components = -(logp * adv)
+    print(f"\n--- Loss Components ---")
+    print(f"logp * adv shape: {loss_components.data.shape}")
+    print(f"logp * adv mean: {loss_components.data.mean():.4f}")
+    print(f"logp * adv requires_grad: {loss_components.requires_grad}")
+    
+    return loss_pi
+
+  def verify_parameter_connection():
+    print("\n=== PARAMETER CONNECTION VERIFICATION ===")
+    for i, param in enumerate(ac.pi.parameters()):
+        if param._op:
+            print(f"Param {i}: op='{param._op}', has _prev: {len(param._prev) > 0}")
+        else:
+            print(f"Param {i}: LEAF NODE (should be), requires_grad: {param.requires_grad}")
+          
+        # Check if this parameter appears in the computational graph of the loss
+        # This is a manual trace - in practice, this should happen automatically
+        print(f"Param {i} id: {id(param)}")
+
   def update():
     data = buf.get()
     # print(data)
@@ -167,10 +223,33 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
     # train policy with single step of gradient decent - this is 1 step
     pi_optimizer.zero_grad()
     loss_pi, pi_info = compute_loss_pi(data)
-    # print("Extra info: ", pi_info)
+
+    # Add debugging
+    loss_pi = debug_gradients_and_params(ac, loss_pi, data)
+
+    print(f"\n--- CALLING BACKWARD ---")
     loss_pi.backward()
-    # mpi_avg_grads(ac.pi)  # average grads across MPI processes
+
+    print(f"\n--- Parameters AFTER backward ---")
+    param_count = 0
+    for name, param in [("pi_weight_0", list(ac.pi.parameters())[0]), ("pi_bias_0", list(ac.pi.parameters())[1])]:
+      print(f"{name} grad after backward: {param.grad.flat[:3] if param.grad is not None else 'None'}")
+      print(f"{name} grad norm: {np.linalg.norm(param.grad) if param.grad is not None else 'None'}")
+      param_count += 1
+      if param_count >= 2:
+        break
+    
+    # Store parameter values before optimizer step
+    old_params = [param.data.copy() for param in list(ac.pi.parameters())[:2]]
+
     pi_optimizer.step()
+
+    print(f"\n--- Parameters AFTER optimizer step ---")
+    new_params = list(ac.pi.parameters())[:2]
+    for i, (name, param) in enumerate([("pi_weight_0", new_params[0]), ("pi_bias_0", new_params[1])]):
+      print(f"{name} first 3 values after step: {param.data.flat[:3]}")
+      param_diff = np.linalg.norm(param.data - old_params[i])
+      print(f"{name} parameter change magnitude: {param_diff}")
 
     # value function learning - this is for {train_v_iter} no of step
     for i in range(train_v_iters):
@@ -180,6 +259,7 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
       # mpi_avg_grads(ac.v)  # average grads across MPI processes
       vf_optimizer.step()
 
+    verify_parameter_connection()
     # Log changes from update
     kl, ent =pi_info['kl'], pi_info_old['ent']
     print("\nLossPi: ",pi_l_old)

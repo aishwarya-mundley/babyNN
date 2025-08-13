@@ -59,7 +59,7 @@ class Actor(Module):
   
 class MLPCategoricalActor(Actor):
   def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
-    super().__init()
+    super().__init__()
     self.logits_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
 
   def _distribution(self, obs):
@@ -81,7 +81,7 @@ class MLPGaussianActor(Actor):
 
   def _distribution(self, obs):
     mu = self.mu_net(obs)
-    std = Tensor(np.exp(self.log_std.data))  # convert log std to std
+    std = self.log_std.exp()
     return Normal(mu, std)
 
   def _log_prob_from_distribution(self, pi, act):

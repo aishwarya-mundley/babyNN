@@ -39,10 +39,10 @@ class Module(object):
 class Linear(Module):
   def __init__(self, in_features, out_features):
     super().__init__()
-    limit = np.sqrt(1/in_features)
-    # limit = np.sqrt(6.0 / (in_features + out_features)) # Xavier/Glorot initialization
+    # limit = np.sqrt(1/in_features)
+    limit = np.sqrt(6.0 / (in_features + out_features)) # Xavier/Glorot initialization
     self.weight = Parameter(np.random.uniform(-limit, limit, (in_features, out_features)))
-    self.bias = Parameter(np.random.uniform(0.0, 0.1, out_features))
+    self.bias = Parameter(np.random.uniform(-0.1, 0.1, out_features))
 
   def forward(self, x):
     return x.matmul(self.weight) + self.bias
