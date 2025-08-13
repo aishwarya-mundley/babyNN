@@ -34,22 +34,28 @@ class Tensor:
     self.requires_grad = requires_grad and not NO_GRAD # if true only then participate in backward pass
 
   def __add__(self, other):
-        other = other if isinstance(other, Tensor) else Tensor(other)
+        other = other if isinstance(other, Tensor) else Tensor(other, requires_grad=False)
         out = Tensor(self.data + other.data, (self, other), '+')
+        out.requires_grad = self.requires_grad or other.requires_grad
 
         def _backward():
+          if self.requires_grad:
             self.grad = self.grad + out.grad
+          if other.requires_grad:
             other.grad = other.grad + out.grad
         out._backward = _backward
         return out
 
   def __mul__(self, other):
-    other = other if isinstance(other, Tensor) else Tensor(other)
+    other = other if isinstance(other, Tensor) else Tensor(other, requires_grad=False)
     out = Tensor(self.data * other.data, (self, other), '*')
+    out.requires_grad = self.requires_grad or other.requires_grad
 
     def _backward():
-      self.grad = self.grad + other.data * out.grad
-      other.grad = other.grad + self.data * out.grad
+      if self.requires_grad:
+        self.grad = self.grad + other.data * out.grad
+      if other.requires_grad:
+        other.grad = other.grad + self.data * out.grad
     out._backward = _backward
     return out
 
@@ -84,10 +90,13 @@ class Tensor:
     assert self.data.ndim == 2 and other.data.ndim == 2 and self.data.shape[1] == other.data.shape[0], f"Shape mismatch for matmul: {self.data.shape} @ {other.data.shape}"
 
     out = Tensor(self.data @ other.data, (self, other), '@')
+    out.requires_grad = self.requires_grad or other.requires_grad
 
     def _backward():
-      self.grad = self.grad + out.grad @ other.data.T
-      other.grad = other.grad + self.data.T @ out.grad
+      if self.requires_grad:
+        self.grad = self.grad + out.grad @ other.data.T
+      if other.requires_grad:
+        other.grad = other.grad + self.data.T @ out.grad
     out._backward = _backward
     return out
 
