@@ -189,6 +189,10 @@ class Tensor:
   # Enable operations like -x, x-y, /x, x/y
   def __neg__(self): # -self
     return self * -1
+  
+  def __rmul__(self, other):
+    # other * self -> call self.__mul__(other)
+    return self.__mul__(other)
 
   def __sub__(self, other): # self - other
     return self + (-other)
@@ -197,7 +201,10 @@ class Tensor:
     return other + (-self)
 
   def __truediv__(self, other): # self / other
-    return self * (other**-1)
+    if isinstance(other, Tensor):
+        return self * (other ** -1)
+    else:
+        return self * (Tensor(other, requires_grad=False) ** -1)
 
   def __rtruediv__(self, other): # other / self
     return other * (self**-1)

@@ -4,38 +4,52 @@ from Tensor import Tensor
 class Categorical:
     def __init__(self, probs=None, logits=None):
         if probs is None and logits is None:
-            raise ValueError("Must provide probs or logits")
-
+            raise ValueError("provide probs or logits")
         if probs is not None:
-            arr = probs.data if isinstance(probs, Tensor) else np.array(probs, dtype=np.float32)
-            arr = arr / arr.sum(axis=-1, keepdims=True)  # normalize
-            self.probs = Tensor(arr)
+            arr = probs if isinstance(probs, Tensor) else Tensor(np.array(probs, dtype=np.float32))
+            # Normalize using Tensor ops
+            self.probs = arr / arr.sum(axis=-1, keepdims=True)
         else:
-            arr = logits.data if isinstance(logits, Tensor) else np.array(logits, dtype=np.float32)
-            # Softmax
-            exp_logits = np.exp(arr - np.max(arr, axis=-1, keepdims=True))
-            arr = exp_logits / exp_logits.sum(axis=-1, keepdims=True)
-            self.probs = Tensor(arr)
+            logits = logits if isinstance(logits, Tensor) else Tensor(np.array(logits, dtype=np.float32))
+            # softmax with Tensor ops
+            maxl = logits - logits.data.max(axis=-1, keepdims=True)  # NOTE: numeric stable; if logits is Tensor use .data here only for shape; simpler: compute exp(logits - max)
+            exp = (logits - logits.data.max(axis=-1, keepdims=True)).exp()
+            self.probs = exp / exp.sum(axis=-1, keepdims=True)
 
     def sample(self):
-        # Works for batched and unbatched
+        # sampling is not differentiable; return Tensor with requires_grad=False
         if self.probs.data.ndim == 1:
-            choice = np.random.choice(len(self.probs.data), p=self.probs.data)
-            return Tensor(choice)
+            choice = np.random.choice(self.probs.data.shape[-1], p=self.probs.data)
+            return Tensor(np.array(choice, dtype=np.int64), requires_grad=False)
         else:
-            choices = [np.random.choice(len(p), p=p) for p in self.probs.data]
-            return Tensor(np.array(choices, dtype=np.int64))
+            # batch sample
+            batch = self.probs.data.shape[0]
+            choices = np.array([np.random.choice(self.probs.data.shape[-1], p=self.probs.data[i])
+                                for i in range(batch)], dtype=np.int64)
+            return Tensor(choices, requires_grad=False)
 
     def log_prob(self, value):
-        value = value if isinstance(value, Tensor) else Tensor(np.array(value, dtype=np.int64))
-        if self.probs.data.ndim == 1:
-            return Tensor(np.log(self.probs.data[value.data]))
+        # value is integer index or Tensor of ints (requires_grad=False)
+        if not isinstance(value, Tensor):
+            value = Tensor(np.array(value, dtype=np.int64), requires_grad=False)
+
+        p = self.probs  # Tensor
+        if p.data.ndim == 1:
+            # one-hot of single index
+            one_hot = np.eye(p.data.shape[-1], dtype=np.float32)[int(value.data)]
+            one_hot_t = Tensor(one_hot, requires_grad=False)
+            selected = (p * one_hot_t).sum(axis=-1)   # Tensor ops -> selected depends on p
+            return selected.log()
         else:
-            return Tensor(np.log(self.probs.data[np.arange(len(value.data)), value.data]))
+            # batch: build one-hot matrix (batch, num_actions)
+            oh = np.eye(p.data.shape[-1], dtype=np.float32)[value.data]  # value.data shape (batch,)
+            one_hot_t = Tensor(oh, requires_grad=False)
+            selected = (p * one_hot_t).sum(axis=-1)   # shape (batch,)
+            return selected.log()
 
     def entropy(self):
-        p = self.probs.data
-        return Tensor(-np.sum(p * np.log(p + 1e-8), axis=-1))
-    
-    def __repr__(self):
-        return f"Categorical(probs={self.probs})"
+        p = self.probs
+        # -sum p log p (use Tensor ops so gradient flows)
+        # add small epsilon for numeric stability
+        eps = Tensor(1e-8, requires_grad=False)
+        return - (p * (p + eps).log()).sum(axis=-1)

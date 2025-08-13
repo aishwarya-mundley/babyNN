@@ -118,6 +118,8 @@ class MLPActorCritic(Module):
       pi = self.pi._distribution(obs)
       a = pi.sample()
       logp_a = self.pi._log_prob_from_distribution(pi, a)
+      if hasattr(logp_a, "sum"):
+        logp_a = logp_a.sum()
       v = self.v(obs)
     return a.numpy(), v.numpy(), logp_a.numpy()  # returns everything
 

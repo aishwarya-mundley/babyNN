@@ -82,7 +82,7 @@ class VPGBuffer:
     self.adv_buf = (self.adv_buf - adv_mean)/adv_std
     data = dict(obs=self.obs_buf, act=self.act_buf, ret=self.ret_buf,
                 adv=self.adv_buf, logp=self.logp_buf)
-    return {k: Tensor(np.array(v, dtype=np.float32)) for k,v in data.items()}
+    return {k: Tensor(np.array(v, dtype=np.float32), requires_grad=False) for k,v in data.items()}
   
 def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=4000, epochs=50, gamma=0.99, pi_lr=3e-4, vf_lr=1e-3,
@@ -297,7 +297,11 @@ def vpg(env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0,
       a, v, logp = ac.step(Tensor(o_flat))
       if isinstance(a, Tensor):
         a = a.data
-      a = np.asarray(a).squeeze() # ensures a is 1D array
+      a = np.asarray(a).squeeze()
+      if a.ndim == 2 and a.shape[0] == 1:
+        a = a[0]  # shape (6,)
+      elif a.ndim > 1 and a.shape[0] == steps_per_epoch:
+        a = a[t]  # get the action for current timestep
 
       next_o, r, terminated, truncated, _ = env.step(a)
       done = terminated or truncated
