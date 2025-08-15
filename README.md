@@ -1,2 +1,2 @@
 # babyNN
-pytorch like baby neural net with scratch implementations
+pytorch like baby neural net and reinforcement learning algorithms with scratch implementations
