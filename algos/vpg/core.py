@@ -1,11 +1,11 @@
 import numpy as np
-from Module import Module, Identity, Sequential, Linear, Tanh
-from Parameter import Parameter
+from blocks.Module import Module, Identity, Sequential, Linear, Tanh
+from blocks.Parameter import Parameter
 from distributions.Categorical import Categorical
 from distributions.Normal import Normal
 from gymnasium.spaces import Box, Discrete
-from Tensor import Tensor
-from Tensor import no_grad
+from blocks.Tensor import Tensor
+from blocks.Tensor import no_grad
 
 def combined_shape(length, shape=None):
   if shape is None:

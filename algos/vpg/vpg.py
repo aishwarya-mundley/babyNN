@@ -2,8 +2,8 @@ import time
 import numpy as np
 import gymnasium as gym
 from algos.vpg.core import combined_shape, manual_seed, count_vars, MLPActorCritic, discount_cumsum
-from Tensor import Tensor, no_grad
-from Optimizer import Adam
+from blocks.Tensor import Tensor, no_grad
+from blocks.Optimizer import Adam
 import argparse
 import wandb
 

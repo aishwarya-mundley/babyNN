@@ -1,5 +1,5 @@
 import numpy as np
-from Tensor import Tensor
+from blocks.Tensor import Tensor
 
 class Normal:
     def __init__(self, mean, std):

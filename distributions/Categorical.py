@@ -1,5 +1,5 @@
 import numpy as np
-from Tensor import Tensor
+from blocks.Tensor import Tensor
 
 class Categorical:
     def __init__(self, probs=None, logits=None):

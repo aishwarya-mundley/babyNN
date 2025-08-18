@@ -1,7 +1,7 @@
 import numpy as np
-from Module import Sequential, Linear, ReLU
-from Optimizer import Adam
-from Tensor import Tensor
+from blocks.Module import Sequential, Linear, ReLU
+from blocks.Optimizer import Adam
+from blocks.Tensor import Tensor
 
 def mse_loss(predictions, target):
   return (predictions - target)**2.0
